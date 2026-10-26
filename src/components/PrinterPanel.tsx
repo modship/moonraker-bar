@@ -633,18 +633,57 @@ function ConfirmButton({
 }
 
 const SNAPSHOT_EVERY_MS = 2000;
+/** No first frame after this long: the stream is stuck, open a new connection. */
+const STREAM_STALL_MS = 5000;
+/** Reconnections before falling back to snapshots. */
+const STREAM_RETRIES = 3;
+/**
+ * Global, not per card: the card remounts when you switch printers or views, and a
+ * per-card counter would start again at 1 and reuse a URL WebKit still holds an
+ * aborted, frameless response for.
+ */
+let streamSessions = 0;
 
 /**
  * An <img> playing an MJPEG stream. Removing an <img> does not close its
  * connection in WebKit / Chromium, so the src is cleared on unmount to abort it.
  */
-function StreamImg({ src, alt, style, onError }: { src: string; alt: string; style?: CSSProperties; onError: () => void }) {
+function StreamImg({
+  src,
+  alt,
+  style,
+  onError,
+  onFrame,
+}: {
+  src: string;
+  alt: string;
+  style?: CSSProperties;
+  /** Failed, or no frame within STREAM_STALL_MS. */
+  onError: () => void;
+  /** First frame decoded. */
+  onFrame: () => void;
+}) {
   const ref = useRef<HTMLImageElement>(null);
   const alive = useRef(true);
   useLayoutEffect(() => {
     const img = ref.current;
     alive.current = true;
+    // An MJPEG response can stay open without ever sending a frame (camera busy,
+    // stale connection) and no event fires: watch for the first decoded frame.
+    let gotFrame = false;
+    const poll = setInterval(() => {
+      if (!gotFrame && img && img.naturalWidth > 0) {
+        gotFrame = true;
+        clearInterval(poll);
+        alive.current && onFrame();
+      }
+    }, 250);
+    const stall = setTimeout(() => {
+      if (!gotFrame && alive.current) onError();
+    }, STREAM_STALL_MS);
     return () => {
+      clearInterval(poll);
+      clearTimeout(stall);
       // Ignore the error the aborted request is about to raise.
       alive.current = false;
       if (img) img.src = "data:,";
@@ -672,17 +711,26 @@ function CameraCard({ printer, snapshot }: { printer: PrinterConfig; snapshot: S
   const key = `${source?.stream ?? ""}|${source?.snapshot ?? ""}`;
 
   const [streamFailed, setStreamFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [streaming, setStreaming] = useState(false);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
   const [tick, setTick] = useState(0);
   /** Changes every time the popover opens (or the camera changes), so the stream is a fresh request. */
-  const sessions = useRef(0);
-  const session = useMemo(() => ++sessions.current, [key, visible]);
+  const session = useMemo(() => ++streamSessions, [key, visible, retry]);
 
   // New camera, or popover shown again: try the live stream first.
   useEffect(() => {
     setStreamFailed(false);
     setSnapshotFailed(false);
+    setRetry(0);
+    setStreaming(false);
   }, [key, visible]);
+
+  const onStreamError = () => {
+    setStreaming(false);
+    if (retry + 1 < STREAM_RETRIES) setRetry((n) => n + 1);
+    else setStreamFailed(true);
+  };
 
   const live = !!source?.stream && !streamFailed;
 
@@ -706,7 +754,8 @@ function CameraCard({ printer, snapshot }: { printer: PrinterConfig; snapshot: S
             src={`${source.stream}${source.stream!.includes("?") ? "&" : "?"}_s=${session}`}
             alt={source.name}
             style={imgStyle}
-            onError={() => setStreamFailed(true)}
+            onError={onStreamError}
+            onFrame={() => setStreaming(true)}
           />
         ) : snapSrc && !snapshotFailed ? (
           <img
@@ -725,7 +774,15 @@ function CameraCard({ printer, snapshot }: { printer: PrinterConfig; snapshot: S
       </div>
       {visible && live && (
         <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">
-          <span className="h-1.5 w-1.5 rounded-full bg-danger" /> LIVE
+          {streaming ? (
+            <>
+              <span className="h-1.5 w-1.5 rounded-full bg-danger" /> LIVE
+            </>
+          ) : (
+            <>
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white/70" /> Connecting…
+            </>
+          )}
         </span>
       )}
     </Card>
