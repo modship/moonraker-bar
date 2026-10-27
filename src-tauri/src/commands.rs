@@ -192,3 +192,15 @@ pub fn hide_popover(app: AppHandle) {
 pub fn quit(app: AppHandle) {
     app.exit(0);
 }
+
+/// Starts reading an MJPEG stream; frames arrive on `on_event`. Returns the stream id.
+#[tauri::command]
+pub fn camera_start(url: String, on_event: tauri::ipc::Channel<crate::camera::CameraEvent>) -> u64 {
+    crate::camera::start(url, on_event)
+}
+
+/// Stops a stream started with `camera_start` and closes its connection.
+#[tauri::command]
+pub fn camera_stop(id: u64) {
+    crate::camera::stop(id)
+}

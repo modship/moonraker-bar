@@ -164,6 +164,7 @@ pub fn hide_popover(app: &AppHandle) {
     if let Some(win) = popover(app) {
         let _ = win.hide();
     }
+    crate::camera::stop_all();
     let _ = app.emit(VISIBILITY_EVENT, false);
 }
 
@@ -171,6 +172,7 @@ pub fn toggle_popover(app: &AppHandle) {
     let Some(win) = popover(app) else { return };
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
+        crate::camera::stop_all();
         let _ = app.emit(VISIBILITY_EVENT, false);
         return;
     }
@@ -194,6 +196,7 @@ pub fn popover_blurred(window: &tauri::Window) {
         *guard.0.lock().unwrap() = Some(Instant::now());
     }
     let _ = window.hide();
+    crate::camera::stop_all();
     let _ = app.emit(VISIBILITY_EVENT, false);
 }
 

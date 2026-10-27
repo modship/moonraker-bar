@@ -1,6 +1,6 @@
 // Typed wrappers around the Tauri commands and events exposed by src-tauri.
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Discovered,
@@ -12,7 +12,16 @@ import type {
   Snapshot,
 } from "./types";
 
+export type CameraEvent = { type: "frame"; data: string } | { type: "error"; message: string };
+
 export const backend = {
+  /** Reads an MJPEG stream in the backend; returns the id to pass to cameraStop. */
+  cameraStart: (url: string, onEvent: (e: CameraEvent) => void) => {
+    const channel = new Channel<CameraEvent>();
+    channel.onmessage = onEvent;
+    return invoke<number>("camera_start", { url, onEvent: channel });
+  },
+  cameraStop: (id: number) => invoke<void>("camera_stop", { id }),
   listPrinters: () => invoke<PrinterConfig[]>("list_printers"),
   getSnapshots: () => invoke<Record<string, Snapshot>>("get_snapshots"),
   addPrinter: (input: PrinterInput) => invoke<PrinterConfig>("add_printer", { input }),

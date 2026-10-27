@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   Pause,
   Play,
@@ -633,8 +633,6 @@ function ConfirmButton({
 }
 
 const SNAPSHOT_EVERY_MS = 2000;
-/** No first frame after this long: the stream is stuck, open a new connection. */
-const STREAM_STALL_MS = 5000;
 /** Reconnections before falling back to snapshots. */
 const STREAM_RETRIES = 3;
 /**
@@ -645,60 +643,57 @@ const STREAM_RETRIES = 3;
 let streamSessions = 0;
 
 /**
- * An <img> playing an MJPEG stream. Removing an <img> does not close its
- * connection in WebKit / Chromium, so the src is cleared on unmount to abort it.
+ * A live MJPEG stream. The backend reads it and sends the frames: an <img> on the
+ * stream URL kept its connection open in WKWebView after being removed, and the
+ * leaked connections ended up filling the camera server's client slots.
  */
-function StreamImg({
-  src,
+function LiveStream({
+  url,
   alt,
   style,
   onError,
   onFrame,
 }: {
-  src: string;
+  url: string;
   alt: string;
   style?: CSSProperties;
-  /** Failed, or no frame within STREAM_STALL_MS. */
+  /** Failed, or no frame for a few seconds (reported by the backend). */
   onError: () => void;
-  /** First frame decoded. */
+  /** First frame received. */
   onFrame: () => void;
 }) {
-  const ref = useRef<HTMLImageElement>(null);
-  const alive = useRef(true);
-  useLayoutEffect(() => {
-    const img = ref.current;
-    alive.current = true;
-    // An MJPEG response can stay open without ever sending a frame (camera busy,
-    // stale connection) and no event fires: watch for the first decoded frame.
-    let gotFrame = false;
-    const poll = setInterval(() => {
-      if (!gotFrame && img && img.naturalWidth > 0) {
-        gotFrame = true;
-        clearInterval(poll);
-        alive.current && onFrame();
-      }
-    }, 250);
-    const stall = setTimeout(() => {
-      if (!gotFrame && alive.current) onError();
-    }, STREAM_STALL_MS);
+  const [src, setSrc] = useState<string | null>(null);
+  const cb = useRef({ onError, onFrame });
+  cb.current = { onError, onFrame };
+
+  useEffect(() => {
+    let stopped = false;
+    let id: number | null = null;
+    let first = true;
+    setSrc(null);
+    backend
+      .cameraStart(url, (e) => {
+        if (stopped) return;
+        if (e.type === "frame") {
+          setSrc(`data:image/jpeg;base64,${e.data}`);
+          if (first) {
+            first = false;
+            cb.current.onFrame();
+          }
+        } else cb.current.onError();
+      })
+      .then((sid) => {
+        if (stopped) void backend.cameraStop(sid);
+        else id = sid;
+      })
+      .catch(() => !stopped && cb.current.onError());
     return () => {
-      clearInterval(poll);
-      clearTimeout(stall);
-      // Ignore the error the aborted request is about to raise.
-      alive.current = false;
-      if (img) img.src = "data:,";
+      stopped = true;
+      if (id !== null) void backend.cameraStop(id);
     };
-  }, [src]);
-  return (
-    <img
-      ref={ref}
-      src={src}
-      alt={alt}
-      className="block h-full w-full object-cover"
-      style={style}
-      onError={() => alive.current && onError()}
-    />
-  );
+  }, [url]);
+
+  return src ? <img src={src} alt={alt} className="block h-full w-full object-cover" style={style} /> : null;
 }
 
 /**
@@ -749,9 +744,9 @@ function CameraCard({ printer, snapshot }: { printer: PrinterConfig; snapshot: S
     <Card className="relative overflow-hidden p-0" title={source.name}>
       <div className="aspect-video w-full bg-black/40">
         {!visible ? null : live ? (
-          <StreamImg
+          <LiveStream
             key={`stream-${key}-${session}`}
-            src={`${source.stream}${source.stream!.includes("?") ? "&" : "?"}_s=${session}`}
+            url={`${source.stream}${source.stream!.includes("?") ? "&" : "?"}_s=${session}`}
             alt={source.name}
             style={imgStyle}
             onError={onStreamError}

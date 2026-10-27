@@ -1,3 +1,4 @@
+mod camera;
 mod commands;
 mod discovery;
 mod manager;
@@ -57,6 +58,8 @@ pub fn run() {
             commands::printer_action,
             commands::test_connection,
             commands::hide_popover,
+            commands::camera_start,
+            commands::camera_stop,
             commands::quit,
         ])
         .build(tauri::generate_context!())
