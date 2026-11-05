@@ -16,11 +16,17 @@ use tauri_plugin_positioner::{Position, WindowExt};
 use crate::moonraker::{ConnectionState, Snapshot};
 
 /// Optional text beside the progress ring. The ring itself is always visible.
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct TrayAppearance {
     pub show_percent: bool,
     pub show_time_left: bool,
+}
+
+impl Default for TrayAppearance {
+    fn default() -> Self {
+        Self { show_percent: true, show_time_left: true }
+    }
 }
 
 pub const TRAY_ID: &str = "main";
@@ -334,11 +340,14 @@ mod tests {
     }
 
     #[test]
-    fn absent_preferences_default_to_ring_only() {
+    fn absent_preferences_preserve_original_labels() {
         let appearance: TrayAppearance = serde_json::from_str("{}").unwrap();
         assert_eq!(appearance, TrayAppearance::default());
-        assert!(!appearance.show_percent && !appearance.show_time_left);
-        let partial: TrayAppearance = serde_json::from_str(r#"{"show_percent":true}"#).unwrap();
-        assert!(partial.show_percent && !partial.show_time_left);
+        assert!(appearance.show_percent && appearance.show_time_left);
+        assert_eq!(TrayState::from_snapshot("P", &printing(), appearance).title, "64% · 1h02");
+        let partial: TrayAppearance = serde_json::from_str(r#"{"show_percent":false}"#).unwrap();
+        assert!(!partial.show_percent && partial.show_time_left);
+        let saved: TrayAppearance = serde_json::from_str(r#"{"show_percent":false,"show_time_left":false}"#).unwrap();
+        assert!(!saved.show_percent && !saved.show_time_left);
     }
 }
