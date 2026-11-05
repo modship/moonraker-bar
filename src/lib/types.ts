@@ -43,6 +43,11 @@ export const CARD_LABELS: Record<CardId, string> = {
   actions: "Quick actions",
 };
 
+export interface TrayAppearance {
+  show_percent: boolean;
+  show_time_left: boolean;
+}
+
 export interface Layout {
   order: string[];
   hidden: string[];

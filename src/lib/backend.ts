@@ -4,6 +4,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   Discovered,
+  TrayAppearance,
   Layout,
   PrinterAction,
   PrinterConfig,
@@ -32,6 +33,8 @@ export const backend = {
     invoke<void>("set_pinned_macros", { id, macros }),
   setShownTemps: (id: string, objects: string[]) =>
     invoke<void>("set_shown_temps", { id, objects }),
+  getTrayAppearance: () => invoke<TrayAppearance>("get_tray_appearance"),
+  setTrayAppearance: (appearance: TrayAppearance) => invoke<void>("set_tray_appearance", { appearance }),
   getLayout: () => invoke<Layout>("get_layout"),
   getThumbnail: (id: string, path: string) => invoke<string>("get_thumbnail", { id, path }),
   discoverPrinters: () => invoke<Discovered[]>("discover_printers"),
