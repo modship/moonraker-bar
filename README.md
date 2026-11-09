@@ -29,7 +29,7 @@ Built with **Tauri 2** (Rust) and **React + TypeScript + Tailwind**.
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/fleet.png" width="240" alt="Fleet"><br><sub>Fleet view</sub></td>
-    <td align="center"><img src="docs/screenshots/printing-light.png" width="240" alt="Light theme"><br><sub>Follows the system light / dark theme</sub></td>
+    <td align="center"><img src="docs/screenshots/printing-light.png" width="240" alt="Light theme"><br><sub>Light / dark theme, or follow the system</sub></td>
   </tr>
   <tr>
     <td align="center" colspan="3"><img src="docs/screenshots/settings.png" width="240" alt="Settings"><br><sub>Settings: printers, temperature tiles, layout</sub></td>

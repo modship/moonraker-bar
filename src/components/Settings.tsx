@@ -7,6 +7,7 @@ import { CARD_LABELS, resolveLayout, type CardId, type Discovered, type PrinterC
 import { MODELS, MODEL_LABELS, guessModel } from "@/lib/model";
 import { cn } from "@/lib/format";
 import { defaultTemps, tempColor, tempLabel } from "@/lib/temps";
+import { THEMES, getThemePref, setThemePref, type ThemePref } from "@/lib/theme";
 import { Button, Card, Field, IconButton, Input } from "./ui";
 
 type Editing = PrinterConfig | "new" | { prefill: PrinterInput } | null;
@@ -102,7 +103,8 @@ export function Settings() {
 
       <section>
         <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-2">General</h2>
-        <Card className="p-0">
+        <Card className="divide-y divide-line p-0">
+          <ThemeRow />
           <AutostartRow />
         </Card>
       </section>
@@ -532,6 +534,38 @@ function MenuBarSettings() {
         </button>
       ))}
     </Card>
+  );
+}
+
+const THEME_OPTIONS = [["system", "System"], ...Object.entries(THEMES)] as [ThemePref, string][];
+
+// ponytail: segmented control, switch to a <select> once there are more than ~4 themes.
+function ThemeRow() {
+  const [pref, setPref] = useState(getThemePref);
+  return (
+    <div className="flex items-center justify-between px-3 py-2">
+      <span className="font-medium">Theme</span>
+      <div role="radiogroup" aria-label="Theme" className="flex rounded-lg bg-surface-3 p-0.5">
+        {THEME_OPTIONS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={pref === id}
+            onClick={() => {
+              setThemePref(id);
+              setPref(id);
+            }}
+            className={cn(
+              "rounded-md px-2 py-0.5 text-[12px] transition",
+              pref === id ? "bg-surface-2 font-medium text-fg shadow-sm" : "text-fg-2 hover:text-fg",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
