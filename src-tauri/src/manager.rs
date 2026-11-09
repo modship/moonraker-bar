@@ -17,6 +17,7 @@ const STORE_FILE: &str = "settings.json";
 const KEY_PRINTERS: &str = "printers";
 const KEY_ACTIVE: &str = "active";
 const KEY_LAYOUT: &str = "layout";
+const KEY_TRAY_APPEARANCE: &str = "tray_appearance";
 
 /// Which cards the panel shows, and in what order. Keys are the card ids the
 /// front knows: job, temps, controls, afc, macros, camera, actions.
@@ -41,6 +42,7 @@ pub struct Manager {
     /// Printer the tray follows. `None` = whichever is busy, else the first one.
     active: Mutex<Option<String>>,
     layout: Mutex<Layout>,
+    tray_appearance: Mutex<tray::TrayAppearance>,
     updates_tx: mpsc::Sender<PrinterUpdate>,
     /// Last known `print_state` per printer, for transition notifications.
     last_states: Mutex<HashMap<String, String>>,
@@ -55,6 +57,7 @@ impl Manager {
             printers: Mutex::new(Vec::new()),
             active: Mutex::new(None),
             layout: Mutex::new(Layout::default()),
+            tray_appearance: Mutex::new(tray::TrayAppearance::default()),
             updates_tx: tx,
             last_states: Mutex::new(HashMap::new()),
             last_tray: Mutex::new(None),
@@ -68,7 +71,7 @@ impl Manager {
 
     /// Read the store and start a client for every saved printer.
     pub async fn load(&self) {
-        let (configs, active, layout) = match self.app.store(STORE_FILE) {
+        let (configs, active, layout, appearance) = match self.app.store(STORE_FILE) {
             Ok(store) => {
                 let configs: Vec<PrinterConfig> = store
                     .get(KEY_PRINTERS)
@@ -82,15 +85,20 @@ impl Manager {
                     .get(KEY_LAYOUT)
                     .and_then(|v| serde_json::from_value(v).ok())
                     .unwrap_or_default();
-                (configs, active, layout)
+                let appearance = store
+                    .get(KEY_TRAY_APPEARANCE)
+                    .and_then(|v| serde_json::from_value(v).ok())
+                    .unwrap_or_default();
+                (configs, active, layout, appearance)
             }
             Err(e) => {
                 log::error!("store unavailable: {e}");
-                (Vec::new(), None, Layout::default())
+                (Vec::new(), None, Layout::default(), tray::TrayAppearance::default())
             }
         };
         *self.active.lock().await = active;
         *self.layout.lock().await = layout;
+        *self.tray_appearance.lock().await = appearance;
         for cfg in configs {
             self.spawn(cfg).await;
         }
@@ -247,6 +255,19 @@ impl Manager {
         self.persist().await;
     }
 
+    pub async fn tray_appearance(&self) -> tray::TrayAppearance {
+        *self.tray_appearance.lock().await
+    }
+
+    pub async fn set_tray_appearance(&self, appearance: tray::TrayAppearance) -> Result<(), String> {
+        let store = self.app.store(STORE_FILE).map_err(|e| e.to_string())?;
+        store.set(KEY_TRAY_APPEARANCE, json!(appearance));
+        store.save().map_err(|e| e.to_string())?;
+        *self.tray_appearance.lock().await = appearance;
+        self.refresh_tray().await;
+        Ok(())
+    }
+
     pub async fn active(&self) -> Option<String> {
         self.active.lock().await.clone()
     }
@@ -337,9 +358,10 @@ impl Manager {
 
     /// Pick the printer the tray should show and push its state to the icon.
     async fn refresh_tray(&self) {
+        let appearance = self.tray_appearance().await;
         let picked = self.pick_tray_printer().await;
         let state = match picked {
-            Some((name, snapshot)) => tray::TrayState::from_snapshot(&name, &snapshot),
+            Some((name, snapshot)) => tray::TrayState::from_snapshot(&name, &snapshot, appearance),
             None => tray::TrayState::empty(),
         };
         self.apply_tray(state).await;

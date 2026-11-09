@@ -108,6 +108,16 @@ pub async fn discover_printers() -> Result<Vec<crate::discovery::Discovered>, St
 }
 
 #[tauri::command]
+pub async fn get_tray_appearance(mgr: Mgr<'_>) -> Result<tray::TrayAppearance, String> {
+    Ok(mgr.tray_appearance().await)
+}
+
+#[tauri::command]
+pub async fn set_tray_appearance(mgr: Mgr<'_>, appearance: tray::TrayAppearance) -> Result<(), String> {
+    mgr.set_tray_appearance(appearance).await
+}
+
+#[tauri::command]
 pub async fn get_layout(mgr: Mgr<'_>) -> Result<Layout, String> {
     Ok(mgr.layout().await)
 }

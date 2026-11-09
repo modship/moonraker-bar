@@ -3,7 +3,7 @@ import { Plus, Trash2, Pencil, Wifi, Check, Loader2, GripVertical, ChevronUp, Ch
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { useStore } from "@/store";
 import { backend } from "@/lib/backend";
-import { CARD_LABELS, resolveLayout, type CardId, type Discovered, type PrinterConfig, type PrinterInput, type Snapshot } from "@/lib/types";
+import { CARD_LABELS, resolveLayout, type CardId, type Discovered, type PrinterConfig, type PrinterInput, type Snapshot, type TrayAppearance } from "@/lib/types";
 import { MODELS, MODEL_LABELS, guessModel } from "@/lib/model";
 import { cn } from "@/lib/format";
 import { defaultTemps, tempColor, tempLabel } from "@/lib/temps";
@@ -94,6 +94,11 @@ export function Settings() {
           <LayoutEditor />
         </section>
       )}
+
+      <section>
+        <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-2">Menu bar</h2>
+        <MenuBarSettings />
+      </section>
 
       <section>
         <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-2">General</h2>
@@ -485,6 +490,49 @@ function NetworkScan({ onClose, onManual }: { onClose: () => void; onManual: (pr
 /** "voron" -> "Voron", "Voron-24" stays as is. */
 function prettyName(name: string) {
   return name && name === name.toLowerCase() ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+}
+
+function MenuBarSettings() {
+  const [appearance, setAppearance] = useState<TrayAppearance | null>(null);
+  const [pending, setPending] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    backend.getTrayAppearance()
+      .then((value) => { if (alive) setAppearance(value); })
+      .catch((e) => { if (alive) useStore.getState().setError(String(e)); });
+    return () => { alive = false; };
+  }, []);
+
+  const toggle = async (key: keyof TrayAppearance) => {
+    if (!appearance || pending) return;
+    const next = { ...appearance, [key]: !appearance[key] };
+    setPending(true);
+    try {
+      await backend.setTrayAppearance(next);
+      setAppearance(next);
+    } catch (e) {
+      useStore.getState().setError(String(e));
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Card className="divide-y divide-line p-0">
+      <div className="px-3 py-2 text-[11px] text-fg-3">The progress ring is always visible.</div>
+      {([
+        ["show_percent", "Show percentage"],
+        ["show_time_left", "Show time remaining"],
+      ] as const).map(([key, label]) => (
+        <button key={key} type="button" role="switch" aria-checked={appearance?.[key] ?? false}
+          disabled={!appearance || pending} onClick={() => toggle(key)}
+          className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-surface-3/60 disabled:opacity-50">
+          <span className="font-medium">{label}</span>
+          <Toggle on={appearance?.[key] ?? false} />
+        </button>
+      ))}
+    </Card>
+  );
 }
 
 function AutostartRow() {

@@ -50,6 +50,8 @@ pub fn run() {
             commands::set_pinned_macros,
             commands::set_shown_temps,
             commands::get_layout,
+            commands::get_tray_appearance,
+            commands::set_tray_appearance,
             commands::get_thumbnail,
             commands::discover_printers,
             commands::set_layout,

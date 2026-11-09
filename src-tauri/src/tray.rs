@@ -15,6 +15,20 @@ use tauri_plugin_positioner::{Position, WindowExt};
 
 use crate::moonraker::{ConnectionState, Snapshot};
 
+/// Optional text beside the progress ring. The ring itself is always visible.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct TrayAppearance {
+    pub show_percent: bool,
+    pub show_time_left: bool,
+}
+
+impl Default for TrayAppearance {
+    fn default() -> Self {
+        Self { show_percent: true, show_time_left: true }
+    }
+}
+
 pub const TRAY_ID: &str = "main";
 const POPOVER: &str = "main";
 /// Ignore a tray click that lands right after the popover lost focus, otherwise
@@ -55,23 +69,25 @@ impl TrayState {
         }
     }
 
-    pub fn from_snapshot(name: &str, s: &Snapshot) -> Self {
+    pub fn from_snapshot(name: &str, s: &Snapshot, appearance: TrayAppearance) -> Self {
         let offline = s.connection != ConnectionState::Connected;
         let alert = s.print_state == "error" || matches!(s.klippy_state.as_str(), "shutdown" | "error");
         let busy = s.is_busy();
         let progress_pct = busy.then(|| (s.progress * 100.0).round().clamp(0.0, 100.0) as u8);
         let paused = s.print_state == "paused";
 
-        let title = if offline {
-            String::new()
-        } else if busy {
-            match s.time_left {
-                Some(left) => format!("{}% · {}", progress_pct.unwrap_or(0), fmt_duration(left)),
-                None => format!("{}%", progress_pct.unwrap_or(0)),
+        let mut parts = Vec::new();
+        if !offline && busy {
+            if appearance.show_percent {
+                parts.push(format!("{}%", progress_pct.unwrap_or(0)));
             }
-        } else {
-            String::new()
-        };
+            if appearance.show_time_left {
+                if let Some(left) = s.time_left {
+                    parts.push(fmt_duration(left));
+                }
+            }
+        }
+        let title = parts.join(" · ");
 
         let tooltip = if offline {
             format!("{name} — offline")
@@ -141,7 +157,7 @@ pub fn apply(app: &AppHandle, state: &TrayState) {
     let _ = tray.set_icon(Some(render_icon(state)));
     let _ = tray.set_icon_as_template(true);
     let _ = tray.set_tooltip(Some(&state.tooltip));
-    // Only macOS renders a title next to the icon; elsewhere the call is a no-op or errors.
+    // The progress ring is always present; only its accompanying text is optional.
     let title = if state.title.is_empty() { None } else { Some(state.title.as_str()) };
     let _ = tray.set_title(title);
 }
@@ -271,4 +287,67 @@ fn coverage(px: f32, py: f32, progress: Option<f32>, state: &TrayState) -> f32 {
     };
 
     ring.max(inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn printing() -> Snapshot {
+        Snapshot {
+            connection: ConnectionState::Connected,
+            print_state: "printing".into(),
+            progress: 0.64,
+            time_left: Some(3720.0),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn independent_labels_never_change_the_ring() {
+        for (percent, time, expected) in [
+            (false, false, ""),
+            (true, false, "64%"),
+            (false, true, "1h02"),
+            (true, true, "64% · 1h02"),
+        ] {
+            let state = TrayState::from_snapshot("Printer", &printing(), TrayAppearance {
+                show_percent: percent, show_time_left: time,
+            });
+            assert_eq!(state.title, expected);
+            assert_eq!(state.progress_pct, Some(64));
+            assert!(render_icon(&state).rgba().chunks_exact(4).any(|pixel| pixel[3] > 0));
+        }
+    }
+
+    #[test]
+    fn missing_eta_idle_offline_and_paused() {
+        let appearance = TrayAppearance { show_percent: true, show_time_left: true };
+        let mut snapshot = printing();
+        snapshot.time_left = None;
+        assert_eq!(TrayState::from_snapshot("P", &snapshot, appearance).title, "64%");
+        let time_only = TrayAppearance { show_percent: false, show_time_left: true };
+        assert_eq!(TrayState::from_snapshot("P", &snapshot, time_only).title, "");
+        snapshot.print_state = "paused".into();
+        let paused = TrayState::from_snapshot("P", &snapshot, appearance);
+        assert!(paused.paused);
+        assert_eq!(paused.progress_pct, Some(64));
+        snapshot.connection = ConnectionState::Offline;
+        assert_eq!(TrayState::from_snapshot("P", &snapshot, appearance).title, "");
+        snapshot.connection = ConnectionState::Connected;
+        snapshot.print_state = "standby".into();
+        assert_eq!(TrayState::from_snapshot("P", &snapshot, appearance).title, "");
+    }
+
+    #[test]
+    fn absent_preferences_preserve_original_labels() {
+        let appearance: TrayAppearance = serde_json::from_str("{}").unwrap();
+        assert_eq!(appearance, TrayAppearance::default());
+        assert!(appearance.show_percent && appearance.show_time_left);
+        assert_eq!(TrayState::from_snapshot("P", &printing(), appearance).title, "64% · 1h02");
+        let partial: TrayAppearance = serde_json::from_str(r#"{"show_percent":false}"#).unwrap();
+        assert!(!partial.show_percent && partial.show_time_left);
+        let saved: TrayAppearance = serde_json::from_str(r#"{"show_percent":false,"show_time_left":false}"#).unwrap();
+        assert!(!saved.show_percent && !saved.show_time_left);
+    }
 }
