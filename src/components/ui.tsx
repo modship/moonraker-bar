@@ -3,7 +3,7 @@
 import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/format";
 
-type Variant = "primary" | "secondary" | "ghost" | "danger";
+type Variant = "primary" | "secondary" | "outline" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,8 +14,9 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    "bg-accent text-accent-fg hover:brightness-110 active:brightness-95 disabled:bg-surface-3 disabled:text-fg-3",
+    "bg-accent-solid text-accent-fg hover:brightness-110 active:brightness-95 disabled:bg-surface-3 disabled:text-fg-3",
   secondary: "bg-surface-3 text-fg hover:brightness-105 active:brightness-95 disabled:text-fg-3",
+  outline: "border border-line bg-surface-2 text-fg hover:bg-surface-3 disabled:text-fg-3",
   ghost: "bg-transparent text-fg-2 hover:bg-surface-3 hover:text-fg",
   danger: "bg-danger/12 text-danger hover:bg-danger/20 disabled:bg-surface-3 disabled:text-fg-3",
 };
@@ -76,16 +77,6 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 );
 Input.displayName = "Input";
 
-export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-2">{label}</div>
-      {children}
-      {hint && <div className="mt-1 text-[11px] text-fg-3">{hint}</div>}
-    </label>
-  );
-}
-
 export function Card({ className, children, title }: { className?: string; children: ReactNode; title?: string }) {
   return (
     <div className={cn("rounded-xl border border-line bg-surface-2 p-3", className)} title={title}>
@@ -97,10 +88,10 @@ export function Card({ className, children, title }: { className?: string; child
 export function Badge({ tone = "neutral", children }: { tone?: "neutral" | "ok" | "warn" | "danger" | "accent"; children: ReactNode }) {
   const tones = {
     neutral: "bg-surface-3 text-fg-2",
-    ok: "bg-ok/15 text-ok",
+    ok: "bg-ok/15 text-ok-text",
     warn: "bg-warn/15 text-warn",
-    danger: "bg-danger/15 text-danger",
-    accent: "bg-accent/15 text-accent",
+    danger: "bg-danger/15 text-danger-text",
+    accent: "bg-accent/15 text-accent-text",
   };
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", tones[tone])}>

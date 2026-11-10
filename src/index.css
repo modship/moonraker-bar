@@ -7,15 +7,23 @@
   --color-surface: #f5f5f7;
   --color-surface-2: #ffffff;
   --color-surface-3: #ebebee;
+  /* Selected segment of a segmented control. */
+  --color-raised: #ffffff;
   --color-line: rgba(0, 0, 0, 0.08);
   --color-fg: #1d1d1f;
   --color-fg-2: #6e6e73;
   --color-fg-3: #a1a1a6;
   --color-accent: #0a84ff;
   --color-accent-fg: #ffffff;
+  /* The plain accent / ok / danger are too light for small text or behind white text:
+     -solid fills buttons, -text colours links and status text. */
+  --color-accent-solid: #0071e3;
+  --color-accent-text: #0066cc;
   --color-ok: #30d158;
+  --color-ok-text: #146c2e;
   --color-warn: #ff9f0a;
   --color-danger: #ff453a;
+  --color-danger-text: #d70015;
   --color-heat: #ff6b35;
   --color-bed: #bf5af2;
   --color-chamber: #64d2ff;
@@ -35,10 +43,14 @@
   --color-surface: #1c1c1e;
   --color-surface-2: #2c2c2e;
   --color-surface-3: #3a3a3c;
+  --color-raised: #48484a;
   --color-line: rgba(255, 255, 255, 0.1);
   --color-fg: #f5f5f7;
   --color-fg-2: #98989d;
   --color-fg-3: #636366;
+  --color-accent-text: #409cff;
+  --color-ok-text: #30d158;
+  --color-danger-text: #ff6961;
 }
 
 html,

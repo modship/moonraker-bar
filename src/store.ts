@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
 import { backend } from "./lib/backend";
-import { EMPTY_SNAPSHOT, type Layout, type PrinterConfig, type Snapshot, isBusy } from "./lib/types";
+import { EMPTY_SNAPSHOT, type Layout, type PrinterConfig, type PrinterInput, type Snapshot, isBusy } from "./lib/types";
 
 export type View = "panel" | "fleet" | "settings";
+/** Printer form open in Settings: a printer id (edit), or the starting values of a new printer. */
+export type Editing = string | PrinterInput | null;
 
 interface State {
   ready: boolean;
@@ -14,6 +16,7 @@ interface State {
   /** Printer currently shown in the panel (follows activeId, else the busy one). */
   selectedId: string | null;
   view: View;
+  editing: Editing;
   error: string | null;
   layout: Layout;
   /** False while the popover is hidden; the camera stream is closed then. */
@@ -24,6 +27,7 @@ interface State {
   select: (id: string) => void;
   pin: (id: string | null) => Promise<void>;
   setView: (v: View) => void;
+  setEditing: (e: Editing) => void;
   setError: (e: string | null) => void;
 }
 
@@ -36,6 +40,7 @@ export const useStore = create<State>((set, get) => ({
   activeId: null,
   selectedId: null,
   view: "panel",
+  editing: null,
   error: null,
   layout: { order: [], hidden: [] },
   popoverVisible: true,
@@ -84,7 +89,8 @@ export const useStore = create<State>((set, get) => ({
     set({ activeId: id, selectedId: id ?? pickSelected(get()) });
   },
 
-  setView: (view) => set({ view }),
+  setView: (view) => set({ view, editing: null }),
+  setEditing: (editing) => set({ editing }),
   setError: (error) => set({ error }),
 }));
 

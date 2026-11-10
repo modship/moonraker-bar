@@ -10,7 +10,7 @@ import { PrinterSwitcher } from "./components/PrinterSwitcher";
 import { PrinterPanel } from "./components/PrinterPanel";
 import { Fleet } from "./components/Fleet";
 import { Settings } from "./components/Settings";
-import { IconButton } from "./components/ui";
+import { Badge, IconButton } from "./components/ui";
 
 const WIDTH = 360;
 const MIN_HEIGHT = 220;
@@ -18,7 +18,7 @@ const MIN_HEIGHT = 220;
 const SCREEN_MARGIN = 48;
 
 export default function App() {
-  const { ready, view, setView, error, setError, printers } = useStore();
+  const { ready, view, setView, error, setError, printers, snapshots, editing, setEditing } = useStore();
   const { printer } = useSelectedPrinter();
   const rootRef = useRef<HTMLDivElement>(null);
   const updater = useUpdater();
@@ -72,6 +72,9 @@ export default function App() {
 
   const multi = printers.length > 1;
   const title = view === "settings" ? "Settings" : view === "fleet" ? "Printers" : null;
+  // A printer form open in Settings takes over the header, and its own actions replace the footer.
+  const detail = view === "settings" && editing != null;
+  const edited = typeof editing === "string" ? printers.find((p) => p.id === editing) : undefined;
 
   return (
     <div
@@ -92,6 +95,21 @@ export default function App() {
             )}
             <PrinterSwitcher />
           </>
+        ) : detail ? (
+          <>
+            <IconButton title="Back" onClick={() => setEditing(null)} className="-ml-1 mr-0.5">
+              <ChevronLeft size={15} />
+            </IconButton>
+            <div className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight">{edited?.name ?? "Add printer"}</div>
+            {edited &&
+              (snapshots[edited.id]?.connection === "connected" ? (
+                <Badge tone="ok">
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" /> Online
+                </Badge>
+              ) : (
+                <Badge>Offline</Badge>
+              ))}
+          </>
         ) : (
           <div className="flex-1 text-[15px] font-semibold tracking-tight">{title}</div>
         )}
@@ -100,7 +118,7 @@ export default function App() {
             <ExternalLink size={15} />
           </IconButton>
         )}
-        {view === "settings" ? (
+        {detail ? null : view === "settings" ? (
           <IconButton title="Back" onClick={() => setView(multi ? "fleet" : "panel")}>
             <X size={15} />
           </IconButton>
@@ -132,16 +150,18 @@ export default function App() {
         </div>
       )}
 
-      <footer className="flex items-center justify-between border-t border-line px-3 py-1.5 text-[11px] text-fg-3">
-        <UpdateStatus updater={updater} />
-        <button
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-surface-3 hover:text-fg"
-          onClick={() => backend.quit()}
-          title="Quit"
-        >
-          <Power size={11} /> Quit
-        </button>
-      </footer>
+      {!detail && (
+        <footer className="flex items-center justify-between border-t border-line px-3 py-1.5 text-[11px] text-fg-3">
+          <UpdateStatus updater={updater} />
+          <button
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-surface-3 hover:text-fg"
+            onClick={() => backend.quit()}
+            title="Quit"
+          >
+            <Power size={11} /> Quit
+          </button>
+        </footer>
+      )}
     </div>
   );
 }

@@ -1,7 +1,11 @@
 // Colour themes. Each one is a `:root[data-theme="<id>"]` block of tokens in index.css;
 // adding a theme = one CSS block + one entry here.
 
-export const THEMES = { light: "Light", dark: "Dark" } as const;
+// ponytail: `preview` ([surface, card, text], drawn in the picker thumbnail) repeats three values of the CSS block.
+export const THEMES = {
+  light: { label: "Light", preview: ["#f5f5f7", "#ffffff", "#1d1d1f"] },
+  dark: { label: "Dark", preview: ["#1c1c1e", "#2c2c2e", "#f5f5f7"] },
+} as const;
 export type Theme = keyof typeof THEMES;
 /** What the user picked: a theme, or "system" to follow the OS light / dark setting. */
 export type ThemePref = Theme | "system";
