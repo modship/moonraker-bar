@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { backend } from "./lib/backend";
 import { EMPTY_SNAPSHOT, type Layout, type PrinterConfig, type PrinterInput, type Snapshot, isBusy } from "./lib/types";
 
@@ -21,11 +22,17 @@ interface State {
   layout: Layout;
   /** False while the popover is hidden; the camera stream is closed then. */
   popoverVisible: boolean;
+  /** Detached from the menu bar as a floating, always-on-top widget. */
+  detached: boolean;
+  /** The widget shows one line per printer instead of the full panel. Only applies while detached. */
+  compact: boolean;
 
   init: () => Promise<void>;
   saveLayout: (layout: Layout) => Promise<void>;
   select: (id: string) => void;
   pin: (id: string | null) => Promise<void>;
+  setDetached: (detached: boolean) => Promise<void>;
+  setCompact: (compact: boolean) => void;
   setView: (v: View) => void;
   setEditing: (e: Editing) => void;
   setError: (e: string | null) => void;
@@ -44,6 +51,9 @@ export const useStore = create<State>((set, get) => ({
   error: null,
   layout: { order: [], hidden: [] },
   popoverVisible: true,
+  detached: false,
+  // ponytail: localStorage like the theme, the backend never reads it.
+  compact: localStorage.getItem("compact") === "1",
 
   saveLayout: async (layout) => {
     set({ layout });
@@ -54,13 +64,14 @@ export const useStore = create<State>((set, get) => ({
     unlisten.forEach((u) => u());
     unlisten = [];
 
-    const [printers, snapshots, activeId, layout] = await Promise.all([
+    const [printers, snapshots, activeId, layout, detached] = await Promise.all([
       backend.listPrinters(),
       backend.getSnapshots(),
       backend.getActivePrinter(),
       backend.getLayout().catch(() => ({ order: [], hidden: [] })),
+      backend.getDetached(),
     ]);
-    set({ printers, snapshots, activeId, layout, ready: true, view: printers.length ? "panel" : "settings" });
+    set({ printers, snapshots, activeId, layout, detached, ready: true, view: printers.length ? "panel" : "settings" });
     set({ selectedId: pickSelected(get()) });
 
     unlisten.push(
@@ -80,6 +91,8 @@ export const useStore = create<State>((set, get) => ({
         }
       }),
     );
+    // Launched as a floating widget: the backend placed the window, show it now that there is something to draw.
+    if (detached) getCurrentWindow().show().catch(() => {});
   },
 
   select: (id) => set({ selectedId: id, view: "panel" }),
@@ -87,6 +100,15 @@ export const useStore = create<State>((set, get) => ({
   pin: async (id) => {
     await backend.setActivePrinter(id);
     set({ activeId: id, selectedId: id ?? pickSelected(get()) });
+  },
+
+  setDetached: async (detached) => {
+    await backend.setDetached(detached);
+    set({ detached });
+  },
+  setCompact: (compact) => {
+    localStorage.setItem("compact", compact ? "1" : "0");
+    set({ compact });
   },
 
   setView: (view) => set({ view, editing: null }),

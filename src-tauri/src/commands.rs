@@ -199,6 +199,23 @@ pub fn hide_popover(app: AppHandle) {
 }
 
 #[tauri::command]
+pub fn get_detached() -> bool {
+    tray::is_detached()
+}
+
+/// Detach the popover from the tray as a floating widget, or dock it back.
+#[tauri::command]
+pub fn set_detached(app: AppHandle, detached: bool) {
+    tray::set_detached(&app, detached);
+}
+
+/// Size the popover to its content, in logical px.
+#[tauri::command]
+pub fn resize_popover(app: AppHandle, width: f64, height: f64) {
+    tray::resize_popover(&app, width, height);
+}
+
+#[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);
 }

@@ -40,6 +40,7 @@ Built with **Tauri 2** (Rust) and **React + TypeScript + Tailwind**.
 
 - **Live menu bar icon**: a ring that fills with progress, pause bars while paused, a dot when Klipper is in error. On macOS it is a template image that follows the menu bar theme, with progress and time left as text beside it (`64% · 1h02`).
 - **Popover** anchored under the icon, sized to its content, closed on blur or Escape.
+- **Floating widget**: detach the popover from the bar and it stays on top wherever you drag it, on every desktop, and comes back there at the next launch. Full view, or a compact one with a line per printer; parked in a screen corner, it grows and shrinks from that corner.
 - **Job**: a drawing of your printer with the part growing on the bed in the filament color (a 2.4 raises its gantry, a Trident or V0 lowers its bed), the slicer thumbnail, progress, time left, ETA, elapsed time, layers.
 - **Temperatures**: every heater, sensor and temperature fan Klipper reports. You choose which tiles to show, per printer.
 - **Preheat presets** read from Mainsail and Fluidd, applied exactly as Mainsail does, plus a Cool down button.
