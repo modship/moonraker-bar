@@ -36,10 +36,10 @@ pub fn run() {
             tauri::async_runtime::spawn(async move { mgr.load().await });
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::Focused(false) = event {
-                tray::popover_blurred(window);
-            }
+        .on_window_event(|window, event| match event {
+            WindowEvent::Focused(false) => tray::popover_blurred(window),
+            WindowEvent::Moved(_) | WindowEvent::Resized(_) => tray::popover_moved(window),
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_printers,
@@ -60,6 +60,9 @@ pub fn run() {
             commands::printer_action,
             commands::test_connection,
             commands::hide_popover,
+            commands::get_detached,
+            commands::set_detached,
+            commands::resize_popover,
             commands::camera_start,
             commands::camera_stop,
             commands::quit,

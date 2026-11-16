@@ -78,19 +78,6 @@ textarea {
   -webkit-user-select: text;
 }
 
-/* The whole popover is draggable except controls. */
-.drag {
-  -webkit-app-region: drag;
-}
-.no-drag,
-button,
-input,
-select,
-textarea,
-a {
-  -webkit-app-region: no-drag;
-}
-
 @keyframes pulse-soft {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }

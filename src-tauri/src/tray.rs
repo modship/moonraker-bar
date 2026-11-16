@@ -1,18 +1,22 @@
 //! Tray icon (menu bar on macOS), its live-rendered progress glyph, and the
 //! popover window it toggles.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use serde_json::json;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
+use tauri_plugin_store::StoreExt;
 
 /// Tells the web UI whether the popover is on screen, so it can stop the camera stream when hidden.
 const VISIBILITY_EVENT: &str = "popover:visibility";
 use tauri_plugin_positioner::{Position, WindowExt};
 
+use crate::manager::STORE_FILE;
 use crate::moonraker::{ConnectionState, Snapshot};
 
 /// Optional text beside the progress ring. The ring itself is always visible.
@@ -148,6 +152,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    restore_widget(app);
     Ok(())
 }
 
@@ -170,7 +175,9 @@ fn popover(app: &AppHandle) -> Option<WebviewWindow> {
 
 pub fn show_popover(app: &AppHandle) {
     let Some(win) = popover(app) else { return };
-    let _ = win.move_window(Position::TrayCenter);
+    if !is_detached() {
+        let _ = win.move_window(Position::TrayCenter);
+    }
     let _ = win.show();
     let _ = win.set_focus();
     let _ = app.emit(VISIBILITY_EVENT, true);
@@ -204,7 +211,7 @@ pub fn toggle_popover(app: &AppHandle) {
 
 /// Called from the window event hook when the popover loses focus.
 pub fn popover_blurred(window: &tauri::Window) {
-    if window.label() != POPOVER {
+    if window.label() != POPOVER || is_detached() {
         return;
     }
     let app = window.app_handle();
@@ -214,6 +221,113 @@ pub fn popover_blurred(window: &tauri::Window) {
     let _ = window.hide();
     crate::camera::stop_all();
     let _ = app.emit(VISIBILITY_EVENT, false);
+}
+
+// ---------- floating widget ----------
+
+const KEY_DETACHED: &str = "detached";
+const KEY_WIDGET_BOUNDS: &str = "widget_bounds";
+
+/// True while the popover is detached from the tray as a floating widget: it stays where
+/// the user drops it, on every workspace, and no longer hides when it loses focus.
+static DETACHED: AtomicBool = AtomicBool::new(false);
+
+pub fn is_detached() -> bool {
+    DETACHED.load(Ordering::Relaxed)
+}
+
+pub fn set_detached(app: &AppHandle, detached: bool) {
+    DETACHED.store(detached, Ordering::Relaxed);
+    if let Ok(store) = app.store(STORE_FILE) {
+        store.set(KEY_DETACHED, detached);
+    }
+    let Some(win) = popover(app) else { return };
+    let _ = win.set_visible_on_all_workspaces(detached);
+    if detached {
+        save_bounds(app);
+    } else {
+        // A popover again: snap back under the tray icon.
+        show_popover(app);
+    }
+}
+
+/// Divisor from physical pixels to the unit the widget's place is remembered in.
+/// Physical pixels are one desktop-wide space only on Windows. On macOS and Linux they are
+/// logical points times the scale factor of the monitor the window is on at that moment, so
+/// a position saved on a Retina display is misread by a window created on a 1x one.
+fn native_scale(scale: f64) -> f64 {
+    if cfg!(windows) { 1.0 } else { scale }
+}
+
+/// Remember where the widget sits, to put it back there on the next launch.
+fn save_bounds(app: &AppHandle) {
+    let (Some(win), Ok(store)) = (popover(app), app.store(STORE_FILE)) else { return };
+    if let (Ok(p), Ok(s), Ok(scale)) = (win.outer_position(), win.outer_size(), win.scale_factor()) {
+        let k = native_scale(scale);
+        let (p, s) = (p.to_logical::<f64>(k), s.to_logical::<f64>(k));
+        store.set(KEY_WIDGET_BOUNDS, json!([p.x, p.y, s.width, s.height]));
+    }
+}
+
+/// Called from the window event hook when the popover is moved or resized.
+pub fn popover_moved(window: &tauri::Window) {
+    if window.label() == POPOVER && is_detached() {
+        save_bounds(window.app_handle());
+    }
+}
+
+/// On launch, put a detached widget back where it was left. It stays hidden here:
+/// the web UI shows it once it has something to draw.
+fn restore_widget(app: &AppHandle) {
+    let (Some(win), Ok(store)) = (popover(app), app.store(STORE_FILE)) else { return };
+    if store.get(KEY_DETACHED) != Some(json!(true)) {
+        return;
+    }
+    DETACHED.store(true, Ordering::Relaxed);
+    let _ = win.set_visible_on_all_workspaces(true);
+    let bounds: Option<[f64; 4]> = store.get(KEY_WIDGET_BOUNDS).and_then(|v| serde_json::from_value(v).ok());
+    let (Some([x, y, w, h]), Ok(scale)) = (bounds, win.scale_factor()) else { return };
+    // The monitor it was parked on may be unplugged: only restore a position that is still on screen.
+    let on_screen = win.available_monitors().unwrap_or_default().iter().any(|m| {
+        let k = native_scale(m.scale_factor());
+        let (p, s) = (m.position().to_logical::<f64>(k), m.size().to_logical::<f64>(k));
+        (p.x..p.x + s.width).contains(&x) && (p.y..p.y + s.height).contains(&y)
+    });
+    if on_screen {
+        // Position first: on Windows, landing on a monitor with another DPI rescales the window.
+        let k = native_scale(scale);
+        let _ = win.set_position(LogicalPosition::new(x, y).to_physical::<i32>(k));
+        let _ = win.set_size(LogicalSize::new(w, h).to_physical::<u32>(k));
+    }
+}
+
+/// Size the popover to its content (logical px). The popover grows down from the tray;
+/// a detached widget grows away from the nearest screen corner, so it stays put when
+/// parked there, and is kept inside the work area.
+pub fn resize_popover(app: &AppHandle, width: f64, height: f64) {
+    let Some(win) = popover(app) else { return };
+    // Read the geometry before resizing: the resize is applied asynchronously.
+    let frame = (win.outer_position(), win.outer_size(), win.current_monitor(), win.scale_factor());
+    let _ = win.set_size(LogicalSize::new(width, height));
+    if !is_detached() {
+        return;
+    }
+    let (Ok(pos), Ok(old), Ok(Some(monitor)), Ok(scale)) = frame else { return };
+    let new = LogicalSize::new(width, height).to_physical::<i32>(scale);
+    let area = monitor.work_area();
+    let (x, y) = (
+        anchor(pos.x, old.width as i32, new.width, area.position.x, area.size.width as i32),
+        anchor(pos.y, old.height as i32, new.height, area.position.y, area.size.height as i32),
+    );
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+}
+
+/// New origin on one axis for a window going from `old` to `new` long inside `area_start..+area_len`:
+/// the far edge stays fixed when the window sits in the far half, then the result is clamped to the area.
+fn anchor(pos: i32, old: i32, new: i32, area_start: i32, area_len: i32) -> i32 {
+    let far_half = pos + old / 2 > area_start + area_len / 2;
+    let moved = if far_half { pos + old - new } else { pos };
+    moved.min(area_start + area_len - new).max(area_start)
 }
 
 // ---------- icon rendering ----------
@@ -337,6 +451,20 @@ mod tests {
         snapshot.connection = ConnectionState::Connected;
         snapshot.print_state = "standby".into();
         assert_eq!(TrayState::from_snapshot("P", &snapshot, appearance).title, "");
+    }
+
+    #[test]
+    fn widget_resizes_away_from_the_nearest_edge() {
+        // Screen axis 0..1000. Near the start: the origin stays put.
+        assert_eq!(anchor(10, 360, 260, 0, 1000), 10);
+        // Flush against the far edge: the far edge stays put, both shrinking and growing.
+        assert_eq!(anchor(640, 360, 260, 0, 1000), 740);
+        assert_eq!(anchor(740, 260, 360, 0, 1000), 640);
+        // Growing past the end, or dragged off the start, is pulled back inside.
+        assert_eq!(anchor(400, 100, 700, 0, 1000), 300);
+        assert_eq!(anchor(-50, 100, 100, 0, 1000), 0);
+        // A second monitor to the right keeps its own offset.
+        assert_eq!(anchor(2700, 260, 360, 2000, 1000), 2600);
     }
 
     #[test]

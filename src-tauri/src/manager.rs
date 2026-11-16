@@ -13,7 +13,7 @@ use tokio::sync::{mpsc, oneshot, watch, Mutex, RwLock};
 use crate::moonraker::{self, Action, Command, PrinterConfig, PrinterUpdate, Snapshot};
 use crate::tray;
 
-const STORE_FILE: &str = "settings.json";
+pub const STORE_FILE: &str = "settings.json";
 const KEY_PRINTERS: &str = "printers";
 const KEY_ACTIVE: &str = "active";
 const KEY_LAYOUT: &str = "layout";

@@ -25,7 +25,7 @@ export function PrinterSwitcher() {
   }
 
   return (
-    <div className="no-drag flex min-w-0 flex-1 items-center gap-1.5">
+    <div className="flex min-w-0 flex-1 items-center gap-1.5">
       <span className={cn("h-2 w-2 shrink-0 rounded-full", dot, snap.connection === "connecting" && "pulse-soft")} />
       {printers.length > 1 ? (
         <div className="relative min-w-0">

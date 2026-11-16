@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { currentMonitor, getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { currentMonitor } from "@tauri-apps/api/window";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Settings as SettingsIcon, X, Power, ChevronLeft, ExternalLink, Download, Loader2 } from "lucide-react";
+import { Settings as SettingsIcon, X, Power, ChevronLeft, ExternalLink, Download, Loader2, Minimize2, PictureInPicture2 } from "lucide-react";
 import { useStore, useSelectedPrinter } from "./store";
 import { backend } from "./lib/backend";
 import { cn, webUiUrl } from "./lib/format";
@@ -14,11 +14,16 @@ import { Badge, IconButton } from "./components/ui";
 
 const WIDTH = 360;
 const MIN_HEIGHT = 220;
+const COMPACT_WIDTH = 260;
+const SHELL = "flex flex-col overflow-hidden rounded-[var(--radius-popover)] border border-line bg-surface text-fg";
 /** Room left for the menu bar / taskbar and a margin, in logical px. */
 const SCREEN_MARGIN = 48;
 
 export default function App() {
-  const { ready, view, setView, error, setError, printers, snapshots, editing, setEditing } = useStore();
+  const { ready, view, setView, error, setError, printers, snapshots, editing, setEditing, detached, setDetached, setCompact } = useStore();
+  // The compact widget lists printers; without any, the full view is the way to Settings.
+  const compact = useStore((s) => s.detached && s.compact && s.printers.length > 0);
+  const [width, minHeight] = compact ? [COMPACT_WIDTH, 0] : [WIDTH, MIN_HEIGHT];
   const { printer } = useSelectedPrinter();
   const rootRef = useRef<HTMLDivElement>(null);
   const updater = useUpdater();
@@ -28,10 +33,10 @@ export default function App() {
     useStore.getState().init().catch((e) => setError(String(e)));
   }, [setError]);
 
-  // Escape closes the popover, like a native menu.
+  // Escape closes the popover, like a native menu. A detached widget stays.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") backend.hidePopover();
+      if (e.key === "Escape" && !useStore.getState().detached) backend.hidePopover();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -57,18 +62,16 @@ export default function App() {
     if (!el) return;
     let last = 0;
     const apply = () => {
-      const h = Math.min(maxHeight, Math.max(MIN_HEIGHT, Math.ceil(el.getBoundingClientRect().height)));
+      const h = Math.min(maxHeight, Math.max(minHeight, Math.ceil(el.getBoundingClientRect().height)));
       if (h === last) return;
       last = h;
-      getCurrentWindow()
-        .setSize(new LogicalSize(WIDTH, h))
-        .catch(() => {});
+      backend.resizePopover(width, h).catch(() => {});
     };
     const ro = new ResizeObserver(apply);
     ro.observe(el);
     apply();
     return () => ro.disconnect();
-  }, [maxHeight]);
+  }, [maxHeight, width, minHeight]);
 
   const multi = printers.length > 1;
   const title = view === "settings" ? "Settings" : view === "fleet" ? "Printers" : null;
@@ -76,16 +79,18 @@ export default function App() {
   const detail = view === "settings" && editing != null;
   const edited = typeof editing === "string" ? printers.find((p) => p.id === editing) : undefined;
 
+  if (compact) {
+    return (
+      <div ref={rootRef} className={SHELL} style={{ width, maxHeight }}>
+        <Fleet compact />
+      </div>
+    );
+  }
+
   return (
-    <div
-      ref={rootRef}
-      className={cn(
-        "flex flex-col overflow-hidden rounded-[var(--radius-popover)]",
-        "border border-line bg-surface text-fg",
-      )}
-      style={{ maxHeight }}
-    >
-      <header className="drag flex items-center gap-1 px-3 pt-2.5 pb-2">
+    <div ref={rootRef} className={SHELL} style={{ width, maxHeight }}>
+      {/* Only a detached widget can be dragged around (by its header); the popover stays under the tray icon. */}
+      <header data-tauri-drag-region={detached ? "deep" : undefined} className="flex items-center gap-1 px-3 pt-2.5 pb-2">
         {view === "panel" ? (
           <>
             {multi && (
@@ -116,6 +121,20 @@ export default function App() {
         {view === "panel" && webUi && (
           <IconButton title={`Open ${webUi}`} onClick={() => openUrl(webUi).catch((e) => setError(String(e)))}>
             <ExternalLink size={15} />
+          </IconButton>
+        )}
+        {view !== "settings" && detached && printers.length > 0 && (
+          <IconButton title="Compact view" onClick={() => setCompact(true)}>
+            <Minimize2 size={15} />
+          </IconButton>
+        )}
+        {view !== "settings" && (
+          <IconButton
+            title={detached ? "Dock back to the menu bar" : "Detach as a floating widget"}
+            onClick={() => setDetached(!detached).catch((e) => setError(String(e)))}
+            className={cn(detached && "bg-accent/15 text-accent")}
+          >
+            <PictureInPicture2 size={15} />
           </IconButton>
         )}
         {detail ? null : view === "settings" ? (

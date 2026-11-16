@@ -45,6 +45,10 @@ export const backend = {
     invoke<void>("printer_action", { id, action, arg: arg ?? null }),
   testConnection: (input: PrinterInput) => invoke<string>("test_connection", { input }),
   hidePopover: () => invoke<void>("hide_popover"),
+  getDetached: () => invoke<boolean>("get_detached"),
+  setDetached: (detached: boolean) => invoke<void>("set_detached", { detached }),
+  /** Size the window to its content, in logical px. */
+  resizePopover: (width: number, height: number) => invoke<void>("resize_popover", { width, height }),
   quit: () => invoke<void>("quit"),
 
   onPrinterUpdate: (cb: (u: PrinterUpdate) => void): Promise<UnlistenFn> =>
